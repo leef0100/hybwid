@@ -107,7 +107,7 @@ class PolymarketBot:
         logger.info("Discovering markets...")
 
         market_ids = await self.monitor.discover_markets({
-            'min_volume': 5000,
+            'min_volume': 100,
             'active_only': True
         })
 
