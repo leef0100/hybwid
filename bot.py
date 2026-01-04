@@ -331,9 +331,96 @@ class PolymarketBot:
 
         self.tracker.add_snapshot(summary, positions)
 
+        # Save state for live dashboard
+        self._save_dashboard_state(summary, positions)
+
         logger.info(f"💰 Portfolio: ${summary['portfolio_value']:,.2f} | "
                    f"PnL: ${summary['total_pnl']:,.2f} ({summary['total_pnl_pct']:.2f}%) | "
                    f"Positions: {summary['num_positions']}")
+
+    def _save_dashboard_state(self, summary: dict, positions: list):
+        """Save current state for dashboard"""
+        import json
+        import os
+
+        # Ensure data directory exists
+        os.makedirs('data', exist_ok=True)
+
+        # Get portfolio snapshots
+        snapshots = []
+        if hasattr(self.tracker, 'snapshots'):
+            snapshots = [
+                {
+                    'timestamp': s['timestamp'].isoformat() if hasattr(s['timestamp'], 'isoformat') else str(s['timestamp']),
+                    'portfolio_value': s['summary']['portfolio_value'],
+                    'total_pnl': s['summary']['total_pnl'],
+                } for s in self.tracker.snapshots[-50:]  # Last 50 snapshots
+            ]
+
+        # Get recent trades
+        trades = []
+        if hasattr(self.tracker, 'trades'):
+            trades = self.tracker.trades[-20:]  # Last 20 trades
+
+        # Get strategy stats
+        strategy_stats = [s.get_stats() for s in self.strategies]
+
+        # Get monitored markets info
+        markets_info = []
+        for market_id in list(self.monitor.monitored_markets)[:20]:
+            if market_id in self.monitor.market_cache:
+                cache_entry = self.monitor.market_cache[market_id]
+                market = cache_entry.get('market', {})
+                prices = cache_entry.get('prices', {})
+
+                # Get category
+                category = self.categorizer.categorize(market)
+
+                # Check if short-term
+                is_short_term = self.time_filter.is_short_term(market)
+                time_to_resolution = None
+                urgency_score = 0
+
+                if is_short_term:
+                    time_to_resolution = self.time_filter.extract_time_to_resolution(market)
+                    urgency_score = self.time_filter.get_urgency_score(market)
+
+                markets_info.append({
+                    'id': market_id,
+                    'question': market.get('question', 'Unknown'),
+                    'category': category.value if hasattr(category, 'value') else str(category),
+                    'volume': market.get('volume', 0),
+                    'is_short_term': is_short_term,
+                    'time_to_resolution': time_to_resolution,
+                    'urgency_score': urgency_score,
+                    'prices': {k: v.get('mid', 0) for k, v in prices.items()}
+                })
+
+        state = {
+            'running': self.running,
+            'last_update': datetime.now().isoformat(),
+            'initial_capital': self.engine.initial_capital,
+            'num_strategies': len(self.strategies),
+            'num_markets': len(self.monitor.monitored_markets),
+            'portfolio': summary,
+            'positions': [
+                {
+                    'market_id': p.market_id[:20] + '...' if len(p.market_id) > 20 else p.market_id,
+                    'outcome': p.outcome,
+                    'size': p.size,
+                    'avg_price': p.average_price,
+                    'unrealized_pnl': p.unrealized_pnl
+                } for p in positions
+            ],
+            'trades': trades,
+            'portfolio_snapshots': snapshots,
+            'strategies': strategy_stats,
+            'markets': markets_info
+        }
+
+        # Save to file
+        with open('data/bot_state.json', 'w') as f:
+            json.dump(state, f, indent=2)
 
     async def _shutdown(self):
         """Graceful shutdown"""
