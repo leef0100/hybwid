@@ -42,11 +42,34 @@ class MarketCategorizer:
         'taylor swift', 'beyonce', 'kanye'
     ]
 
-    # Sports keywords
+    # Sports keywords (enhanced)
     SPORTS_KEYWORDS = [
-        'nfl', 'nba', 'mlb', 'nhl', 'fifa', 'world cup',
-        'super bowl', 'playoffs', 'championship', 'tournament',
-        'olympic', 'football', 'basketball', 'baseball', 'soccer'
+        # Leagues
+        'nfl', 'nba', 'mlb', 'nhl', 'mls', 'ncaa', 'college',
+        'epl', 'premier league', 'la liga', 'bundesliga', 'serie a', 'ligue 1',
+        'uefa', 'champions league', 'europa league',
+
+        # Events
+        'fifa', 'world cup', 'super bowl', 'playoffs', 'championship',
+        'tournament', 'olympic', 'world series', 'stanley cup',
+        'final four', 'march madness',
+
+        # Sports
+        'football', 'basketball', 'baseball', 'soccer', 'hockey',
+        'tennis', 'golf', 'boxing', 'mma', 'ufc', 'cricket',
+
+        # Game terms
+        'game', 'match', 'score', 'goal', 'touchdown', 'point',
+        'quarter', 'half', 'overtime', 'halftime', 'period',
+        'inning', 'set', 'round', 'fight',
+
+        # Betting terms
+        'spread', 'over', 'under', 'total', 'moneyline',
+        'prop bet', 'first to score', 'last to score',
+
+        # Teams/Performance
+        'win streak', 'losing streak', 'comeback', 'upset',
+        'shutout', 'blowout', 'rivalry'
     ]
 
     # Politics keywords

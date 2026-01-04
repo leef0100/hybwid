@@ -12,11 +12,14 @@ from src.engine.market_monitor import MarketMonitor
 from src.strategies import ValueStrategy, ArbitrageStrategy, SpreadArbitrageStrategy
 from src.strategies.cross_market_arbitrage import CrossMarketArbitrage
 from src.strategies.scalping_strategy import ScalpingStrategy
+from src.strategies.high_frequency_strategy import HighFrequencyStrategy
 from src.analytics import PortfolioTracker
 from src.analytics.inefficiency_detector import InefficiencyDetector
+from src.analytics.sports_analytics import SportsAnalytics
 from src.utils import setup_logger
 from src.utils.market_categorizer import MarketCategorizer, MarketCategory
 from src.utils.alert_system import AlertSystem
+from src.utils.time_filter import TimeBasedFilter
 
 logger = setup_logger(level=Config.LOG_LEVEL)
 
@@ -42,6 +45,8 @@ class PolymarketBot:
         self.categorizer = MarketCategorizer()
         self.inefficiency_detector = InefficiencyDetector()
         self.alert_system = AlertSystem()
+        self.time_filter = TimeBasedFilter({'max_minutes': 60, 'min_minutes': 5})
+        self.sports_analytics = SportsAnalytics()
 
         self.strategies = []
         self.running = False
@@ -86,8 +91,19 @@ class PolymarketBot:
             'min_edge': 0.02
         }))
 
+        # High-frequency strategy for short-term markets (15min-1hr)
+        self.strategies.append(HighFrequencyStrategy({
+            'max_minutes': 60,            # Focus on <60 min markets
+            'min_minutes': 5,             # At least 5 min buffer
+            'urgency_boost': 0.2,         # Confidence boost for urgent
+            'position_size': 75,
+            'min_edge': 0.03,
+            'use_sports_analysis': True   # Use win streak analysis
+        }))
+
         logger.info(f"Initialized {len(self.strategies)} strategies")
-        logger.info("✨ Enhanced with Cross-Market Arbitrage and Scalping strategies")
+        logger.info("✨ Enhanced with Cross-Market Arbitrage, Scalping, and High-Frequency strategies")
+        logger.info("🎯 Prioritizing: 15min-1hr markets, Sports win streaks, Crypto volatility")
 
     def _setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown"""
@@ -109,9 +125,37 @@ class PolymarketBot:
             if ineff.severity >= 0.5:  # Only alert on significant inefficiencies
                 self.alert_system.alert_inefficiency(ineff)
 
-        # Check if this is a crypto market
+        # Check market category and time
         category = self.categorizer.categorize(market)
         crypto_asset = self.categorizer.get_crypto_asset(market)
+        is_short_term = self.time_filter.is_short_term(market)
+        is_sports = self.sports_analytics.is_sports_market(market)
+
+        # Sports win streak detection
+        if is_sports:
+            sports_ineff = self.sports_analytics.detect_win_streak_inefficiency(market, prices)
+            if sports_ineff:
+                logger.info(f"🏈 Sports inefficiency: {sports_ineff.get('recommendation')}")
+                self.alert_system.alert(
+                    title=f"Sports: {sports_ineff.get('type')}",
+                    message=sports_ineff.get('recommendation', 'Win streak detected'),
+                    level='high',
+                    market_id=market_id,
+                    data=sports_ineff
+                )
+
+        # Short-term market alert
+        if is_short_term:
+            minutes = self.time_filter.extract_time_to_resolution(market)
+            if minutes and minutes <= 30:  # Very urgent
+                urgency = self.time_filter.get_urgency_score(market)
+                self.alert_system.alert(
+                    title=f"⚡ Urgent market: {minutes}min to resolution",
+                    message=market.get('question', 'Unknown')[:80],
+                    level='high' if minutes <= 15 else 'warning',
+                    market_id=market_id,
+                    data={'minutes': minutes, 'urgency': urgency}
+                )
 
         # Run strategies
         for strategy in self.strategies:
@@ -160,38 +204,79 @@ class PolymarketBot:
         # Get all active markets
         all_markets = await self.client.get_markets(limit=500, active=True)
 
-        # Filter by volume
-        filtered_markets = [m for m in all_markets if m.get('volume', 0) >= 5000]
+        # Filter by volume (lower threshold to catch short-term markets)
+        filtered_markets = [m for m in all_markets if m.get('volume', 0) >= 1000]
 
-        # Categorize markets
+        # Categorize markets by type AND time
         crypto_markets = []
+        sports_markets = []
         entertainment_markets = []
+        short_term_markets = []
         other_markets = []
 
         for market in filtered_markets:
             category = self.categorizer.categorize(market)
+            is_short_term = self.time_filter.is_short_term(market)
 
+            # Track time to resolution
+            if is_short_term:
+                minutes = self.time_filter.extract_time_to_resolution(market)
+                market['_time_to_resolution'] = minutes
+                short_term_markets.append(market)
+
+            # Categorize by type
             if category in [MarketCategory.CRYPTO_BTC, MarketCategory.CRYPTO_ETH, MarketCategory.CRYPTO_SOL]:
                 crypto_markets.append(market)
-            elif category == MarketCategory.ENTERTAINMENT or category == MarketCategory.SPORTS:
+            elif category == MarketCategory.SPORTS:
+                sports_markets.append(market)
+            elif category == MarketCategory.ENTERTAINMENT:
                 entertainment_markets.append(market)
             else:
                 other_markets.append(market)
 
-        logger.info(f"Found {len(crypto_markets)} crypto markets, {len(entertainment_markets)} entertainment markets, {len(other_markets)} other markets")
+        logger.info(f"Found {len(crypto_markets)} crypto, {len(sports_markets)} sports, {len(entertainment_markets)} entertainment, {len(other_markets)} other markets")
+        logger.info(f"🔥 Found {len(short_term_markets)} SHORT-TERM markets (<60 min resolution)")
 
-        # Prioritize crypto and entertainment markets
-        prioritized = crypto_markets[:10] + entertainment_markets[:10] + other_markets[:10]
+        # Sort short-term markets by urgency
+        short_term_markets.sort(key=lambda m: m.get('_time_to_resolution', 999))
+
+        # Get time distribution
+        time_dist = self.time_filter.get_time_distribution(all_markets)
+        logger.info(f"Time distribution: {time_dist}")
+
+        # PRIORITY ORDER (up to 40 markets total):
+        # 1. Short-term markets (15-60 min) - TOP PRIORITY (15 slots)
+        # 2. Sports markets (win streak opportunities) (10 slots)
+        # 3. Crypto markets (volatility) (8 slots)
+        # 4. Entertainment markets (4 slots)
+        # 5. Other high-volume markets (3 slots)
+
+        prioritized = []
+        prioritized.extend(short_term_markets[:15])           # Short-term FIRST
+        prioritized.extend(sports_markets[:10])               # Sports win streaks
+        prioritized.extend(crypto_markets[:8])                # Crypto volatility
+        prioritized.extend(entertainment_markets[:4])         # Entertainment
+        prioritized.extend(other_markets[:3])                 # Other
+
+        # Remove duplicates (market might be both short-term AND sports)
+        seen = set()
+        unique_prioritized = []
+        for market in prioritized:
+            market_id = market.get('id')
+            if market_id not in seen:
+                seen.add(market_id)
+                unique_prioritized.append(market)
 
         # Get category stats
-        stats = self.categorizer.get_category_stats(prioritized)
+        stats = self.categorizer.get_category_stats(unique_prioritized)
         logger.info(f"Market distribution: {stats}")
 
         # Add to monitor
-        for market in prioritized[:30]:  # Monitor up to 30 markets
+        for market in unique_prioritized[:40]:  # Monitor up to 40 markets
             self.monitor.add_market(market.get('id'))
 
-        logger.info(f"Monitoring {len(self.monitor.monitored_markets)} markets (prioritizing crypto & entertainment)")
+        logger.info(f"Monitoring {len(self.monitor.monitored_markets)} markets")
+        logger.info("📊 Priority: ⚡Short-term (15-60min) > 🏈Sports > 🪙Crypto > 🎬Entertainment")
 
     async def run_live(self):
         """Run bot in live mode"""

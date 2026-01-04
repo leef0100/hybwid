@@ -9,18 +9,21 @@ This bot is for **RESEARCH AND EDUCATIONAL PURPOSES ONLY**. It simulates trades 
 ## Features
 
 - 📊 **Paper Trading Engine** - Simulate trades without real money
-- 🤖 **Multiple Strategies** - Value-based, arbitrage, spread, cross-market, and scalping strategies
+- 🤖 **6 Trading Strategies** - Value, arbitrage, spread, cross-market, scalping, and high-frequency
+- ⚡ **Short-Term Focus** - Specialized for 15min-1hr markets (live events, in-play betting)
+- 🏈 **Sports Win Streak Analysis** - Detect overvalued/undervalued teams based on streaks
 - 🪙 **Crypto Focus** - Specialized filtering for BTC, ETH, SOL markets
 - 🎬 **Entertainment Markets** - Track sports, pop culture, and entertainment opportunities
-- 📈 **Real-time Monitoring** - Track markets in real-time with price history
+- 📈 **Real-time Monitoring** - Track up to 40 markets with price history
 - 📉 **Backtesting** - Test strategies on historical data
 - 🛡️ **Risk Management** - Built-in position sizing and exposure limits
 - 📊 **Performance Analytics** - Track and analyze portfolio performance
-- 🔍 **Market Discovery** - Automatically find interesting markets by category
+- 🔍 **Smart Market Discovery** - Priority: Short-term > Sports > Crypto > Entertainment
 - ⚡ **Inefficiency Detection** - Statistical analysis to detect mispricing
 - 🚨 **Real-time Alerts** - Get notified of arbitrage opportunities and signals
 - 🔄 **Cross-Market Arbitrage** - Detect same events priced differently
-- 📊 **Scalping Strategy** - Momentum and mean-reversion trading
+- 📊 **Time-Based Filtering** - Extract and prioritize by time to resolution
+- 🏆 **Sports Analytics** - Team performance, momentum, and streak tracking
 
 ## Installation
 
@@ -66,10 +69,12 @@ python bot.py
 
 This will:
 - Discover active markets with sufficient volume
-- **Prioritize crypto (BTC/ETH/SOL) and entertainment markets**
-- Monitor up to 30 markets in real-time
+- **⚡ PRIORITIZE: Short-term markets (15min-1hr) resolving soon**
+- **🏈 Focus on sports with win streak analysis**
+- **🪙 Track crypto (BTC/ETH/SOL) volatility**
+- Monitor up to 40 markets in real-time
 - Detect inefficiencies and arbitrage opportunities
-- Execute paper trades based on 5 strategies
+- Execute paper trades based on 6 strategies
 - Generate real-time alerts for opportunities
 - Track portfolio performance
 
@@ -222,6 +227,38 @@ Configuration:
 - **Spread Filter**: Only trades liquid markets with tight spreads
 - Tracks price history and calculates z-scores for statistical arbitrage
 
+### 6. High-Frequency Strategy ⭐ NEW
+Ultra-short-term strategy for markets resolving in 15-60 minutes. Ideal for live sports events, breaking news, and time-sensitive opportunities.
+
+Configuration:
+```python
+{
+    'max_minutes': 60,            # Only trade markets <60 min
+    'min_minutes': 5,             # Minimum 5 min buffer
+    'urgency_boost': 0.2,         # Confidence boost for urgent markets
+    'position_size': 75,
+    'min_edge': 0.03,             # 3% minimum edge
+    'use_sports_analysis': True   # Enable win streak detection
+}
+```
+
+**How it works:**
+- **Time Extraction**: Automatically detects market resolution time from questions
+- **Sports Win Streaks**: Detects teams on hot/cold streaks (3+ wins/losses)
+  - **Hot streak** (3+ wins) = Team often OVERVALUED by public → **FADE** (bet against)
+  - **Cold streak** (3+ losses) = Team often UNDERVALUED → **BUY**
+  - Applies "regression to the mean" theory
+- **Urgency Pricing**: Markets <15 min often have stale prices → opportunity
+- **Liquidity Scalping**: Tight spreads (<2%) + short time = quick profit potential
+
+**Example inefficiencies detected:**
+```
+Team with 5-game win streak priced at 0.75 (75%)
+→ Fair value (regressed to mean): 0.60
+→ Signal: FADE team, bet against (No outcome)
+→ Edge: 15% overvaluation
+```
+
 ## Market Categorization ⭐ NEW
 
 The bot automatically categorizes markets into:
@@ -291,6 +328,112 @@ print(stats)  # {'total': 45, 'by_type': {...}, 'avg_severity': 0.65}
 # Get recent high-severity inefficiencies
 recent = detector.get_recent_inefficiencies(minutes=60, min_severity=0.7)
 ```
+
+## Time-Based Filtering ⭐ NEW
+
+The bot automatically extracts time to resolution from market questions and prioritizes short-term markets.
+
+### Supported Time Patterns
+
+- **Specific times**: "by 3:00 PM", "at 12:30"
+- **Minutes**: "in 15 minutes", "next 30 minutes"
+- **Hours**: "in 1 hour", "within 2 hours"
+- **Game periods**: "first quarter", "halftime", "2nd half"
+- **Relative times**: "half hour", "quarter hour"
+
+### Time Intervals
+
+Markets are categorized by resolution time:
+- **15min**: Ultra-urgent opportunities
+- **30min**: High-frequency trades
+- **1hour**: Short-term positions
+- **2-4 hours**: Medium-term
+- **1 day+**: Long-term (lower priority)
+
+### Using the Time Filter
+
+```python
+from src.utils.time_filter import TimeBasedFilter
+
+time_filter = TimeBasedFilter({'max_minutes': 60, 'min_minutes': 5})
+
+# Check if market is short-term
+is_short_term = time_filter.is_short_term(market)
+
+# Get time to resolution
+minutes = time_filter.extract_time_to_resolution(market)
+
+# Calculate urgency score (0-1)
+urgency = time_filter.get_urgency_score(market)  # Higher = more urgent
+
+# Filter markets
+short_term_markets = time_filter.filter_short_term_markets(all_markets)
+```
+
+## Sports Win Streak Analytics ⭐ NEW
+
+Sophisticated sports analytics that detect market inefficiencies based on team performance and public betting psychology.
+
+### Win Streak Theory
+
+**The Problem**: Public overreacts to win/loss streaks
+- Team wins 5 games in a row → Public overvalues them
+- Team loses 5 games → Public undervalues them
+
+**The Opportunity**: Regression to the mean
+- Hot streaks end (team regresses to true skill level)
+- Cold streaks end (variance evens out)
+- Markets overprice streaks → **exploitable edge**
+
+### How It Works
+
+```python
+from src.analytics.sports_analytics import SportsAnalytics
+
+sports = SportsAnalytics({
+    'hot_streak_threshold': 3,          # 3+ wins = hot
+    'cold_streak_threshold': 3,          # 3+ losses = cold
+    'streak_overvalue_threshold': 0.15   # 15% overvaluation threshold
+})
+
+# Detect inefficiency
+inefficiency = sports.detect_win_streak_inefficiency(market, prices)
+
+if inefficiency:
+    print(inefficiency['recommendation'])
+    # Output: "FADE Lakers (hot streak overvalued)"
+    # or: "BUY Bulls (cold streak undervalued)"
+```
+
+### Example Scenarios
+
+**Scenario 1: Hot Streak Overvalue**
+```
+Team: Lakers (5-game win streak)
+Market price: 0.75 (75% implied probability to win)
+True win rate: 0.60 (60% long-term average)
+Regressed fair value: 0.55 (regression to mean)
+→ Overvalued by 20%
+→ Signal: FADE Lakers (bet No or bet opponent)
+```
+
+**Scenario 2: Cold Streak Undervalue**
+```
+Team: Celtics (4-game losing streak)
+Market price: 0.30 (30% implied probability)
+True win rate: 0.55 (55% long-term average)
+Regressed fair value: 0.525
+→ Undervalued by 22.5%
+→ Signal: BUY Celtics (bet Yes)
+```
+
+### Supported Analysis
+
+- **Win streak detection**: Identifies 3+ game winning streaks
+- **Loss streak detection**: Identifies 3+ game losing streaks
+- **Momentum shifts**: Sharp price movements indicating news
+- **Team extraction**: Automatically extracts team names from questions
+- **League detection**: NFL, NBA, MLB, NHL, EPL, Champions League, etc.
 
 ## Real-Time Alerts ⭐ NEW
 
