@@ -205,7 +205,14 @@ class PolymarketBot:
         all_markets = await self.client.get_markets(limit=500, active=True)
 
         # Filter by volume (lower threshold to catch short-term markets)
-        filtered_markets = [m for m in all_markets if m.get('volume', 0) >= 1000]
+        filtered_markets = []
+        for m in all_markets:
+            try:
+                volume = float(m.get('volume', 0))
+                if volume >= 1000:
+                    filtered_markets.append(m)
+            except (ValueError, TypeError):
+                continue
 
         # Categorize markets by type AND time
         crypto_markets = []
