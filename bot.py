@@ -295,6 +295,11 @@ class PolymarketBot:
         self.monitor.add_callback(self.on_market_update)
 
         self.running = True
+
+        # Take initial snapshot for dashboard
+        self._take_snapshot()
+        logger.info("📊 Dashboard ready at http://localhost:8501")
+
         monitor_task = asyncio.create_task(self.monitor.start())
 
         snapshot_interval = 300
