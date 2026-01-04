@@ -10,8 +10,13 @@ from src.engine import PaperTradingEngine, OrderSide
 from src.engine.risk_manager import RiskManager
 from src.engine.market_monitor import MarketMonitor
 from src.strategies import ValueStrategy, ArbitrageStrategy, SpreadArbitrageStrategy
+from src.strategies.cross_market_arbitrage import CrossMarketArbitrage
+from src.strategies.scalping_strategy import ScalpingStrategy
 from src.analytics import PortfolioTracker
+from src.analytics.inefficiency_detector import InefficiencyDetector
 from src.utils import setup_logger
+from src.utils.market_categorizer import MarketCategorizer, MarketCategory
+from src.utils.alert_system import AlertSystem
 
 logger = setup_logger(level=Config.LOG_LEVEL)
 
@@ -32,6 +37,12 @@ class PolymarketBot:
         })
         self.monitor = MarketMonitor(self.client, update_interval=60)
         self.tracker = PortfolioTracker()
+
+        # New components
+        self.categorizer = MarketCategorizer()
+        self.inefficiency_detector = InefficiencyDetector()
+        self.alert_system = AlertSystem()
+
         self.strategies = []
         self.running = False
 
@@ -40,6 +51,7 @@ class PolymarketBot:
 
     def _setup_strategies(self):
         """Initialize trading strategies"""
+        # Original strategies
         self.strategies.append(ValueStrategy({
             'min_edge': 0.05,
             'max_price': 0.7,
@@ -57,7 +69,25 @@ class PolymarketBot:
             'position_size': 50
         }))
 
+        # New strategies for enhanced arbitrage detection
+        self.strategies.append(CrossMarketArbitrage({
+            'min_price_diff': 0.05,       # 5% price difference between similar markets
+            'similarity_threshold': 0.7,   # How similar markets need to be
+            'position_size': 100,
+            'max_markets_compare': 50
+        }))
+
+        self.strategies.append(ScalpingStrategy({
+            'momentum_threshold': 0.03,    # 3% price movement
+            'volume_spike_multiple': 2.0,  # 2x average volume
+            'max_spread': 0.03,            # Only scalp tight spreads
+            'lookback_periods': 5,
+            'position_size': 50,
+            'min_edge': 0.02
+        }))
+
         logger.info(f"Initialized {len(self.strategies)} strategies")
+        logger.info("✨ Enhanced with Cross-Market Arbitrage and Scalping strategies")
 
     def _setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown"""
@@ -73,10 +103,31 @@ class PolymarketBot:
         """Callback when market is updated"""
         market_id = market.get('id')
 
+        # Detect market inefficiencies
+        inefficiencies = self.inefficiency_detector.detect_all(market, prices)
+        for ineff in inefficiencies:
+            if ineff.severity >= 0.5:  # Only alert on significant inefficiencies
+                self.alert_system.alert_inefficiency(ineff)
+
+        # Check if this is a crypto market
+        category = self.categorizer.categorize(market)
+        crypto_asset = self.categorizer.get_crypto_asset(market)
+
+        # Run strategies
         for strategy in self.strategies:
             signals = await strategy.generate_signals(market, prices)
 
             for signal in signals:
+                # Alert on high-confidence signals
+                self.alert_system.alert_signal(signal, strategy.name)
+
+                # Additional alert for crypto opportunities
+                if crypto_asset and signal.confidence >= 0.6:
+                    self.alert_system.alert_crypto_opportunity(
+                        market, crypto_asset,
+                        f"{signal.action} {signal.outcome} @ {signal.price:.3f} ({signal.confidence:.0%} confidence)"
+                    )
+
                 is_valid, reason = self.risk_manager.validate_signal(signal, self.engine)
 
                 if is_valid:
@@ -106,15 +157,41 @@ class PolymarketBot:
         """Discover interesting markets and start monitoring"""
         logger.info("Discovering markets...")
 
-        market_ids = await self.monitor.discover_markets({
-            'min_volume': 5000,
-            'active_only': True
-        })
+        # Get all active markets
+        all_markets = await self.client.get_markets(limit=500, active=True)
 
-        for market_id in market_ids[:20]:
-            self.monitor.add_market(market_id)
+        # Filter by volume
+        filtered_markets = [m for m in all_markets if m.get('volume', 0) >= 5000]
 
-        logger.info(f"Monitoring {len(self.monitor.monitored_markets)} markets")
+        # Categorize markets
+        crypto_markets = []
+        entertainment_markets = []
+        other_markets = []
+
+        for market in filtered_markets:
+            category = self.categorizer.categorize(market)
+
+            if category in [MarketCategory.CRYPTO_BTC, MarketCategory.CRYPTO_ETH, MarketCategory.CRYPTO_SOL]:
+                crypto_markets.append(market)
+            elif category == MarketCategory.ENTERTAINMENT or category == MarketCategory.SPORTS:
+                entertainment_markets.append(market)
+            else:
+                other_markets.append(market)
+
+        logger.info(f"Found {len(crypto_markets)} crypto markets, {len(entertainment_markets)} entertainment markets, {len(other_markets)} other markets")
+
+        # Prioritize crypto and entertainment markets
+        prioritized = crypto_markets[:10] + entertainment_markets[:10] + other_markets[:10]
+
+        # Get category stats
+        stats = self.categorizer.get_category_stats(prioritized)
+        logger.info(f"Market distribution: {stats}")
+
+        # Add to monitor
+        for market in prioritized[:30]:  # Monitor up to 30 markets
+            self.monitor.add_market(market.get('id'))
+
+        logger.info(f"Monitoring {len(self.monitor.monitored_markets)} markets (prioritizing crypto & entertainment)")
 
     async def run_live(self):
         """Run bot in live mode"""
@@ -174,6 +251,14 @@ class PolymarketBot:
 
         self._take_snapshot()
         self.tracker.print_summary()
+
+        # Print inefficiency stats
+        ineff_stats = self.inefficiency_detector.get_inefficiency_stats()
+        logger.info(f"Inefficiencies detected: {ineff_stats}")
+
+        # Print alert stats
+        alert_stats = self.alert_system.get_stats()
+        logger.info(f"Alerts generated: {alert_stats}")
 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.engine.save_state(f"data/final_state_{timestamp}.json")

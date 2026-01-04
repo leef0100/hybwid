@@ -9,12 +9,18 @@ This bot is for **RESEARCH AND EDUCATIONAL PURPOSES ONLY**. It simulates trades 
 ## Features
 
 - 📊 **Paper Trading Engine** - Simulate trades without real money
-- 🤖 **Multiple Strategies** - Value-based, arbitrage, and spread strategies
-- 📈 **Real-time Monitoring** - Track markets in real-time
+- 🤖 **Multiple Strategies** - Value-based, arbitrage, spread, cross-market, and scalping strategies
+- 🪙 **Crypto Focus** - Specialized filtering for BTC, ETH, SOL markets
+- 🎬 **Entertainment Markets** - Track sports, pop culture, and entertainment opportunities
+- 📈 **Real-time Monitoring** - Track markets in real-time with price history
 - 📉 **Backtesting** - Test strategies on historical data
 - 🛡️ **Risk Management** - Built-in position sizing and exposure limits
 - 📊 **Performance Analytics** - Track and analyze portfolio performance
-- 🔍 **Market Discovery** - Automatically find interesting markets
+- 🔍 **Market Discovery** - Automatically find interesting markets by category
+- ⚡ **Inefficiency Detection** - Statistical analysis to detect mispricing
+- 🚨 **Real-time Alerts** - Get notified of arbitrage opportunities and signals
+- 🔄 **Cross-Market Arbitrage** - Detect same events priced differently
+- 📊 **Scalping Strategy** - Momentum and mean-reversion trading
 
 ## Installation
 
@@ -37,6 +43,21 @@ cp .env.example .env
 
 ## Quick Start
 
+### Try the Demo ⭐ NEW
+
+See all the new features in action:
+
+```bash
+python demo_arbitrage_bot.py
+```
+
+This demo showcases:
+- Market categorization (crypto vs entertainment)
+- Inefficiency detection
+- Cross-market arbitrage
+- Scalping strategy
+- Real-time alert system
+
 ### Run Live Paper Trading
 
 ```bash
@@ -45,8 +66,11 @@ python bot.py
 
 This will:
 - Discover active markets with sufficient volume
-- Monitor markets in real-time
-- Execute paper trades based on strategies
+- **Prioritize crypto (BTC/ETH/SOL) and entertainment markets**
+- Monitor up to 30 markets in real-time
+- Detect inefficiencies and arbitrage opportunities
+- Execute paper trades based on 5 strategies
+- Generate real-time alerts for opportunities
 - Track portfolio performance
 
 ### Run Backtest
@@ -86,20 +110,40 @@ Edit `.env` or `config.py` to adjust:
 
 ```
 hybwid/
-├── bot.py                 # Main bot orchestrator
-├── config.py              # Configuration
-├── requirements.txt       # Dependencies
+├── bot.py                          # Main bot orchestrator
+├── demo_arbitrage_bot.py           # ⭐ NEW: Feature demonstration
+├── config.py                       # Configuration
+├── requirements.txt                # Dependencies
 │
 ├── src/
-│   ├── api/              # Polymarket API client
-│   ├── engine/           # Trading engine, risk management
-│   ├── strategies/       # Trading strategies
-│   ├── analytics/        # Performance tracking
-│   └── utils/            # Utilities and logging
+│   ├── api/
+│   │   └── polymarket_client.py   # Polymarket API client
+│   │
+│   ├── engine/
+│   │   ├── paper_trader.py        # Paper trading engine
+│   │   ├── risk_manager.py        # Risk management
+│   │   ├── market_monitor.py      # Real-time monitoring
+│   │   └── backtester.py          # Backtesting framework
+│   │
+│   ├── strategies/
+│   │   ├── value_strategy.py           # Value-based trading
+│   │   ├── arbitrage_strategy.py       # YES/NO arbitrage
+│   │   ├── cross_market_arbitrage.py   # ⭐ NEW: Cross-market detection
+│   │   └── scalping_strategy.py        # ⭐ NEW: Momentum & mean reversion
+│   │
+│   ├── analytics/
+│   │   ├── portfolio_tracker.py        # Performance tracking
+│   │   └── inefficiency_detector.py    # ⭐ NEW: Statistical analysis
+│   │
+│   └── utils/
+│       ├── logger.py                   # Logging setup
+│       ├── market_categorizer.py       # ⭐ NEW: Market filtering
+│       └── alert_system.py             # ⭐ NEW: Real-time alerts
 │
-├── examples/             # Example scripts
-├── data/                 # Output data and reports
-└── logs/                 # Log files
+├── examples/                      # Example scripts
+├── data/                          # Output data and reports
+│   └── alerts.jsonl              # ⭐ NEW: Alert log
+└── logs/                          # Log files
 ```
 
 ## Strategies
@@ -117,7 +161,7 @@ Configuration:
 ```
 
 ### 2. Arbitrage Strategy
-Exploits mispricing between YES/NO outcomes in binary markets.
+Exploits mispricing between YES/NO outcomes in binary markets. When YES + NO prices don't sum to 1.0, there's a guaranteed profit opportunity.
 
 Configuration:
 ```python
@@ -128,7 +172,7 @@ Configuration:
 ```
 
 ### 3. Spread Arbitrage Strategy
-Targets markets with wide bid-ask spreads.
+Targets markets with wide bid-ask spreads for mean-reversion opportunities.
 
 Configuration:
 ```python
@@ -136,6 +180,141 @@ Configuration:
     'min_spread': 0.05,      # Minimum spread width (5%)
     'position_size': 50,     # Position size per trade
 }
+```
+
+### 4. Cross-Market Arbitrage ⭐ NEW
+Detects when similar markets have different prices for essentially the same event. For example, if two markets ask "Will BTC hit $100k?" but have different prices, we can exploit the cheaper one.
+
+Configuration:
+```python
+{
+    'min_price_diff': 0.05,       # Minimum 5% price difference
+    'similarity_threshold': 0.7,  # How similar questions need to be (70%)
+    'position_size': 100,
+    'max_markets_compare': 50     # Compare across 50 markets max
+}
+```
+
+**How it works:**
+- Builds a cache of similar markets
+- Uses text similarity to find related events
+- Compares prices and generates signals for underpriced markets
+- Particularly effective for crypto markets with multiple time horizons
+
+### 5. Scalping Strategy ⭐ NEW
+High-frequency strategy that exploits short-term price movements and mean reversion.
+
+Configuration:
+```python
+{
+    'momentum_threshold': 0.03,    # 3% price movement triggers signal
+    'volume_spike_multiple': 2.0,  # 2x average volume = spike
+    'max_spread': 0.03,            # Only trade tight spreads (< 3%)
+    'lookback_periods': 5,         # Compare to last 5 updates
+    'position_size': 50,
+    'min_edge': 0.02              # Minimum 2% edge
+}
+```
+
+**How it works:**
+- **Momentum Detection**: Buys into strong upward moves, sells into downward moves
+- **Mean Reversion**: Fades extreme price deviations from recent average
+- **Spread Filter**: Only trades liquid markets with tight spreads
+- Tracks price history and calculates z-scores for statistical arbitrage
+
+## Market Categorization ⭐ NEW
+
+The bot automatically categorizes markets into:
+
+- **Crypto Markets**: BTC, ETH, SOL binary options and price predictions
+- **Entertainment**: Movies, music, awards, celebrities
+- **Sports**: NFL, NBA, MLB, FIFA, Olympics
+- **Politics**: Elections, legislation, policy
+- **Other**: General markets
+
+The bot **prioritizes crypto and entertainment markets** during discovery, monitoring up to 10 of each category.
+
+### Using the Categorizer
+
+```python
+from src.utils.market_categorizer import MarketCategorizer, MarketCategory
+
+categorizer = MarketCategorizer()
+
+# Categorize a market
+category = categorizer.categorize(market)
+
+# Check if crypto
+is_crypto = categorizer.is_crypto_market(market)
+
+# Get crypto asset (BTC, ETH, SOL)
+asset = categorizer.get_crypto_asset(market)  # Returns 'BTC', 'ETH', 'SOL', or None
+
+# Filter markets
+crypto_markets = categorizer.filter_markets(
+    markets,
+    categories=[MarketCategory.CRYPTO_BTC, MarketCategory.CRYPTO_ETH],
+    min_volume=10000
+)
+```
+
+## Inefficiency Detection ⭐ NEW
+
+Statistical analysis detects various market inefficiencies:
+
+### Types of Inefficiencies
+
+1. **Probability Sum** - YES + NO prices don't equal 1.0 (arbitrage!)
+2. **Wide Spreads** - Excessive bid-ask spreads (> 5%)
+3. **Statistical Arbitrage** - Price > 2 standard deviations from mean
+4. **Volume Imbalance** - One-sided order flow (future feature)
+
+### Using the Detector
+
+```python
+from src.analytics.inefficiency_detector import InefficiencyDetector
+
+detector = InefficiencyDetector()
+
+# Detect all inefficiencies
+inefficiencies = detector.detect_all(market, prices)
+
+for ineff in inefficiencies:
+    print(f"Type: {ineff.type}")
+    print(f"Severity: {ineff.severity}")  # 0 to 1
+    print(f"Description: {ineff.description}")
+
+# Get stats
+stats = detector.get_inefficiency_stats()
+print(stats)  # {'total': 45, 'by_type': {...}, 'avg_severity': 0.65}
+
+# Get recent high-severity inefficiencies
+recent = detector.get_recent_inefficiencies(minutes=60, min_severity=0.7)
+```
+
+## Real-Time Alerts ⭐ NEW
+
+Get notified of trading opportunities in real-time with color-coded alerts.
+
+### Alert Levels
+- 🟢 **INFO**: General information
+- 🟡 **WARNING**: Moderate opportunities (confidence 40-60%)
+- 🟠 **HIGH**: Strong signals (confidence 60-80%)
+- 🔴 **CRITICAL**: Exceptional opportunities (confidence > 80%)
+
+Alerts are:
+- Logged to console with color coding
+- Saved to `data/alerts.jsonl` for analysis
+- Categorized by type (arbitrage, inefficiency, crypto, signals)
+
+### Example Output
+```
+[12:34:56] 🔴 [CRITICAL] Arbitrage: 8.2% edge
+           Will BTC hit $100k by EOY?
+           Probability sum = 0.918 (< 1.0) - Arbitrage opportunity!
+
+[12:35:12] 🟠 [HIGH] Crypto Alert: BTC
+           BUY Yes @ 0.543 (85% confidence)
 ```
 
 ## Creating Custom Strategies
