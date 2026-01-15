@@ -6,3 +6,6 @@ numpy>=1.24.0
 aiohttp>=3.9.0
 asyncio>=3.4.3
 py-clob-client>=0.20.0
+
+# Crypto Alert Bot dependencies
+coinglass-api>=0.1.0
