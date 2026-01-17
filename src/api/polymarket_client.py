@@ -1,6 +1,7 @@
 import requests
 import aiohttp
 import asyncio
+import ssl
 from typing import Dict, List, Optional
 from datetime import datetime
 import logging
@@ -16,6 +17,11 @@ class PolymarketClient:
         self.gamma_url = gamma_url
         self.session = requests.Session()
 
+        # Create SSL context that doesn't verify certificates (for development/research)
+        self.ssl_context = ssl.create_default_context()
+        self.ssl_context.check_hostname = False
+        self.ssl_context.verify_mode = ssl.CERT_NONE
+
     async def get_markets(self, limit: int = 100, offset: int = 0, active: bool = True) -> List[Dict]:
         """Fetch available markets"""
         try:
@@ -26,7 +32,8 @@ class PolymarketClient:
             }
             url = f"{self.gamma_url}/markets"
 
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -44,7 +51,8 @@ class PolymarketClient:
         try:
             url = f"{self.gamma_url}/markets/{market_id}"
 
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(url) as response:
                     if response.status == 200:
                         return await response.json()
@@ -61,7 +69,8 @@ class PolymarketClient:
             url = f"{self.api_url}/book"
             params = {'token_id': token_id}
 
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
                         return await response.json()
@@ -129,7 +138,8 @@ class PolymarketClient:
             url = f"{self.gamma_url}/markets/{market_id}/trades"
             params = {'limit': limit}
 
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
                         return await response.json()
