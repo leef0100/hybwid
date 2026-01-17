@@ -1,5 +1,7 @@
 # Polymarket Paper Trading Bot
 
+**Author:** TEST
+
 A comprehensive paper trading bot for Polymarket research and strategy development. This bot allows you to test trading strategies without risking real money.
 
 ## ⚠️ Disclaimer
